@@ -3,44 +3,113 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Không Gian Chung</title>
+  <title>Không Gian Chung — Real-time Multiplayer</title>
+  <meta name="description" content="Không gian chung real-time trên Cloudflare Workers và Durable Objects">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@400;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <!-- Màn hình 1: Đăng nhập / Nhập tên -->
+
+  <!-- ======================== MÀN HÌNH 1: LOGIN ======================== -->
   <div id="login-screen" class="screen active">
     <div class="login-container">
+      <div class="login-logo">
+        <div class="logo-ring"></div>
+        <div class="logo-ring ring2"></div>
+      </div>
       <h1 class="glitch" data-text="KHÔNG GIAN CHUNG">KHÔNG GIAN CHUNG</h1>
-      <p class="subtitle">Định danh để kết nối</p>
+      <p class="subtitle">[ CLOUDFLARE EDGE · REAL-TIME MULTIPLAYER ]</p>
       <form id="join-form">
         <div class="input-group">
-          <input type="text" id="username-input" placeholder="Nhập tên của bạn..." required autocomplete="off" maxlength="20">
-          <span class="focus-border"></span>
+          <input type="text" id="username-input" placeholder="Nhập tên định danh..." required autocomplete="off" maxlength="20">
+          <span class="input-label">AGENT_ID</span>
         </div>
-        <button type="submit" class="cyber-btn">THAM GIA</button>
+        <button type="submit" id="join-btn" class="cyber-btn">
+          <span>KẾT NỐI</span>
+          <span class="btn-glitch"></span>
+        </button>
       </form>
+      <p class="login-hint">Bắt đầu với 50$ · Kiếm thêm qua Flash Events</p>
     </div>
   </div>
 
-  <!-- Màn hình 2: Không gian chung (ẩn lúc đầu) -->
+  <!-- ======================== MÀN HÌNH 2: GAME ======================== -->
   <div id="space-screen" class="screen">
-    <!-- Overlay grid cho phong cách cyberpunk -->
     <div class="cyber-grid"></div>
-    
+
+    <!-- Header -->
     <header class="space-header">
-      <div class="status">
-        <span class="dot online"></span>
+      <div class="status-group">
+        <span class="dot" id="status-dot"></span>
         <span id="connection-status">Đang kết nối...</span>
       </div>
-      <div class="user-count">
-        <span id="online-count">0</span> Users Online
+
+      <div class="my-hud">
+        <div class="hud-item hp-hud">
+          <span class="hud-label">HP</span>
+          <div class="hud-bar-wrap">
+            <div class="hud-bar hp-bar" id="hud-hp-bar"></div>
+          </div>
+          <span id="my-hp" class="hud-value">100</span>
+        </div>
+        <div class="hud-item coin-hud">
+          <span class="hud-label">💰</span>
+          <span id="my-coins" class="hud-value coin-value">50</span>
+          <span class="hud-unit">$</span>
+        </div>
+      </div>
+
+      <div class="online-badge">
+        <span class="dot online" id="online-dot"></span>
+        <span id="online-count">0</span>&nbsp;ONLINE
       </div>
     </header>
 
-    <!-- Nơi chứa các username trôi nổi -->
-    <div id="universe" class="universe">
-      <!-- Các thẻ div chứa username sẽ được render tại đây -->
+    <!-- Flash Event Banner -->
+    <div id="flash-banner" class="flash-banner hidden">
+      <div class="flash-icon">⚡</div>
+      <div class="flash-body">
+        <p id="flash-question" class="flash-question"></p>
+        <div class="flash-controls">
+          <input type="text" id="flash-input" class="flash-input" placeholder="Nhập đáp án vào đây..." autocomplete="off">
+          <button id="flash-submit" class="cyber-btn sm">GỬI</button>
+          <button id="lucky-grab-btn" class="cyber-btn sm grab hidden">🎁 NHẬN NGAY!</button>
+        </div>
+        <div class="flash-timer-wrap">
+          <div id="flash-timer-bar" class="flash-timer-bar"></div>
+        </div>
+      </div>
+      <div class="flash-reward-badge">+<span id="flash-reward">0</span>$</div>
     </div>
+
+    <!-- Main Layout -->
+    <div class="main-layout">
+
+      <!-- Universe (Game Canvas) -->
+      <div id="universe" class="universe">
+        <p class="universe-hint">[ Bấm vào không gian để di chuyển ]</p>
+        <!-- Player avatars được inject bởi JS -->
+      </div>
+
+      <!-- Chat Panel -->
+      <aside id="chat-panel" class="chat-panel">
+        <div class="chat-header">
+          <span class="chat-title">💬 Kênh Thế Giới</span>
+          <span class="chat-count"><span id="chat-count">0</span> tin nhắn</span>
+        </div>
+        <div id="chat-messages" class="chat-messages" role="log" aria-live="polite">
+          <!-- Tin nhắn được inject bởi JS -->
+        </div>
+        <div class="chat-input-area">
+          <input type="text" id="chat-input" class="chat-input" placeholder="Gõ tin nhắn..." maxlength="200" autocomplete="off">
+          <button id="chat-send" class="cyber-btn sm">↑</button>
+        </div>
+      </aside>
+    </div>
+
+    <!-- Toast Notifications -->
+    <div id="toast-container" class="toast-container" aria-live="assertive"></div>
   </div>
 
   <script src="app.js"></script>

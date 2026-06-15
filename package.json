@@ -1,0 +1,11 @@
+{
+  "name": "khong-gian-chung",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "stress": "node stress-test.js"
+  },
+  "devDependencies": {
+    "ws": "^8.18.0"
+  }
+}
