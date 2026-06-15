@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Không Gian Chung</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- Màn hình 1: Đăng nhập / Nhập tên -->
+  <div id="login-screen" class="screen active">
+    <div class="login-container">
+      <h1 class="glitch" data-text="KHÔNG GIAN CHUNG">KHÔNG GIAN CHUNG</h1>
+      <p class="subtitle">Định danh để kết nối</p>
+      <form id="join-form">
+        <div class="input-group">
+          <input type="text" id="username-input" placeholder="Nhập tên của bạn..." required autocomplete="off" maxlength="20">
+          <span class="focus-border"></span>
+        </div>
+        <button type="submit" class="cyber-btn">THAM GIA</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Màn hình 2: Không gian chung (ẩn lúc đầu) -->
+  <div id="space-screen" class="screen">
+    <!-- Overlay grid cho phong cách cyberpunk -->
+    <div class="cyber-grid"></div>
+    
+    <header class="space-header">
+      <div class="status">
+        <span class="dot online"></span>
+        <span id="connection-status">Đang kết nối...</span>
+      </div>
+      <div class="user-count">
+        <span id="online-count">0</span> Users Online
+      </div>
+    </header>
+
+    <!-- Nơi chứa các username trôi nổi -->
+    <div id="universe" class="universe">
+      <!-- Các thẻ div chứa username sẽ được render tại đây -->
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

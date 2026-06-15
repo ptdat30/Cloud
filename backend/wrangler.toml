@@ -1,0 +1,44 @@
+# =============================================================
+# wrangler.toml - Cấu hình cho Cloudflare Worker
+# =============================================================
+# Cloudflare Workers chạy trên "Edge Network" - tức là mã JS của
+# bạn được deploy và thực thi tại hàng trăm data center trên
+# toàn thế giới, gần với người dùng nhất có thể.
+# Điều này giúp giảm độ trễ (latency) xuống còn vài millisecond.
+# =============================================================
+
+name = "khong-gian-chung-backend"
+main = "src/index.js"
+compatibility_date = "2024-09-23"
+
+# Workers sử dụng module format hiện đại (ES Modules)
+# thay cho format cũ (Service Worker syntax)
+
+# =============================================================
+# [durable_objects] - Khai báo Durable Object
+# =============================================================
+# Durable Object là một khái niệm đặc biệt của Cloudflare:
+# - Nó là một instance JS object có STATE bền vững (durable).
+# - Không như Worker thông thường (stateless), Durable Object
+#   có thể lưu trữ dữ liệu và ghi nhớ trạng thái (ví dụ: danh
+#   sách user đang online) ngay trong bộ nhớ của nó.
+# - Điều quan trọng: mỗi "phòng chat" sẽ là MỘT instance riêng
+#   biệt của Durable Object, đảm bảo cô lập và nhất quán.
+# =============================================================
+[durable_objects]
+bindings = [
+  { name = "CHAT_ROOM", class_name = "ChatRoom" }
+]
+
+# Khai báo migration để Cloudflare biết cần tạo class ChatRoom mới
+# Lưu ý: Dùng `new_sqlite_classes` thay vì `new_classes` để tương thích
+# với Cloudflare Free Plan (tất cả Durable Object mới dùng SQLite storage)
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["ChatRoom"]
+
+# =============================================================
+# Cấu hình CORS cho phép Frontend (Cloudflare Pages) gọi API
+# =============================================================
+[vars]
+ALLOWED_ORIGIN = "*"
