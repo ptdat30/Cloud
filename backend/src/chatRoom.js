@@ -149,6 +149,35 @@ export class ChatRoom {
       }
 
       // -------------------------------------------------------
+      // CLICK ĐỂ KIẾM TIỀN: mỗi click = +1$
+      // Rate limit 300ms để tránh spam click liên tục
+      // Anti-cheat: tính toán ở Server, Frontend chỉ nhận kết quả
+      case 'click': {
+        if (now - (player.lastClickTime || 0) < 300) return;
+        player.lastClickTime = now;
+
+        // Ghost không thể kiếm tiền
+        if (now < player.ghostUntil) {
+          this.sendJSON(webSocket, { type: 'coin_earned', success: false, error: 'Ghost không thể kiếm tiền!' });
+          return;
+        }
+
+        player.coins += 1;
+        await this.savePlayer(player.username, player);
+
+        // Chỉ gửi riêng cho người click (không broadcast toàn phòng để tránh spam)
+        this.sendJSON(webSocket, {
+          type:      'coin_earned',
+          success:   true,
+          newCoins:  player.coins,
+          x:         data.x, // Trả lại tọa độ để frontend hiện animation đúng chỗ
+          y:         data.y,
+        });
+        break;
+      }
+
+
+      // -------------------------------------------------------
       case 'lucky_grab': {
         if (!this.activeFlashEvent || this.activeFlashEvent.type !== 'lucky_grab') return;
         if (this.activeFlashEvent.solved || now > this.activeFlashEvent.expiresAt) return;

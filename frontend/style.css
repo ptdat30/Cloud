@@ -985,3 +985,21 @@ html, body {
   100% { opacity: 0; transform: translate(-50%, -200%); }
 }
 
+/* Coin number popup */
+.coin-popup {
+  position: absolute;
+  font-family: var(--font-ui);
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: var(--gold);
+  text-shadow: 0 0 8px rgba(255,215,0,0.8);
+  pointer-events: none;
+  z-index: 60;
+  transform: translate(-50%, -50%);
+  animation: coin-float 1s ease-out forwards;
+}
+@keyframes coin-float {
+  0%   { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -150%) scale(1.2); }
+}
+

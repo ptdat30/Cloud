@@ -188,6 +188,7 @@ function onWsMessage(event) {
     case 'buy_result':    handleBuyResult(data);     break;
     case 'attack_result': handleAttackResult(data);  break;
     case 'revived':       handleRevived(data);       break;
+    case 'coin_earned':   handleCoinEarned(data);    break;
   }
 }
 
@@ -325,6 +326,17 @@ function handleRevived({ hp }) {
   if (myState) { myState.hp = hp; updateMyHUD(); }
   showToast('🔄 Bạn đã hồi sinh! HP đầy 100!', 'success');
   appendSystemMessage('🔄 Bạn đã hồi sinh!');
+}
+
+function handleCoinEarned({ success, newCoins, x, y, error }) {
+  if (!success) return; // Ghost mode — im lặng, không spam toast
+  if (myState) {
+    myState.coins = newCoins;
+    updateMyHUD();
+    DOM.shopCoins.textContent = newCoins;
+  }
+  // Hiện animation +1$ tại vị trí click trong universe
+  if (x !== undefined && y !== undefined) spawnCoinPop(x, y);
 }
 
 // ---------------------------------------------------------------
@@ -534,20 +546,18 @@ function handleUniverseClick(e) {
   const xPct = ((e.clientX - rect.left) / rect.width)  * 100;
   const yPct = ((e.clientY - rect.top)  / rect.height) * 100;
 
-  // Clamp an toàn (tránh ra rìa màn hình)
   const x = Math.max(3, Math.min(87, xPct));
   const y = Math.max(12, Math.min(85, yPct));
 
-  // Hiệu ứng ripple tại điểm click
   spawnRipple(e.clientX - rect.left, e.clientY - rect.top);
 
-  // Gửi lệnh di chuyển lên Server
   if (ws?.readyState === WebSocket.OPEN) {
+    // Gửi lệnh di chuyển
     ws.send(JSON.stringify({ type: 'move', x, y }));
+    // Gửi lệnh kiếm xu (rate limit ở server, không cần check ở đây)
+    ws.send(JSON.stringify({ type: 'click', x, y }));
   }
 
-  // Cập nhật vị trí local ngay lập tức (không chờ server echo)
-  // CSS transition sẽ animate mượt mà
   if (myState) {
     const myEl = document.querySelector(`[data-username="${CSS.escape(currentUser)}"]`);
     if (myEl) {
@@ -688,6 +698,18 @@ function spawnDamageNumber(toX, toY, damage) {
   pop.textContent = `-${damage} HP`;
   pop.style.left  = `${(toX / 100) * rect.width}px`;
   pop.style.top   = `${(toY / 100) * rect.height}px`;
+  DOM.universe.appendChild(pop);
+  pop.addEventListener('animationend', () => pop.remove());
+}
+
+// Hiện +1$ bay lên khi click kiếm tiền
+function spawnCoinPop(x, y) {
+  const rect   = DOM.universe.getBoundingClientRect();
+  const pop    = document.createElement('div');
+  pop.className = 'coin-popup';
+  pop.textContent = '+1$';
+  pop.style.left  = `${(x / 100) * rect.width}px`;
+  pop.style.top   = `${(y / 100) * rect.height}px`;
   DOM.universe.appendChild(pop);
   pop.addEventListener('animationend', () => pop.remove());
 }
