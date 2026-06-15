@@ -3,9 +3,12 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "stress": "node stress-test.js"
+    "stress": "node stress-test.js",
+    "deploy": "wrangler deploy",
+    "preview": "wrangler dev"
   },
   "devDependencies": {
+    "wrangler": "^4.100.0",
     "ws": "^8.18.0"
   }
 }
