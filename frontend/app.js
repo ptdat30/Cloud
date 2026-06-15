@@ -98,6 +98,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Form đăng nhập
   DOM.joinForm.addEventListener('submit', (e) => {
     e.preventDefault();
+    initAudio(); // Khởi tạo âm thanh
     const name = DOM.usernameInput.value.trim();
     if (name) initiateConnection(name);
   });
@@ -251,6 +252,7 @@ function handleFlashEvent({ event }) {
   showFlashBanner(event);
   appendSystemMessage(`⚡ Flash Event! ${event.question}`);
   showToast('⚡ Flash Event bắt đầu!', 'gold');
+  playFlashEventSound();
 }
 
 // Ai đó đã giải được flash event
@@ -265,6 +267,7 @@ function handleFlashResult({ winner, reward, correct }) {
 
   appendSystemMessage(msg);
   showToast(msg, isMe ? 'success' : 'info');
+  if (isMe) playBuySound();
 
   // Nếu mình thắng → server sẽ gửi game_state mới kèm coins mới
   // HUD sẽ tự cập nhật qua handleGameState → renderPlayers
@@ -283,6 +286,7 @@ function handleBuyResult({ success, message, error, newCoins, itemId }) {
   if (success) {
     showToast(`✅ ${message}`, 'success');
     appendSystemMessage(`🛒 Bạn đã mua: ${message}`);
+    playBuySound();
     if (myState && newCoins !== undefined) {
       myState.coins = newCoins;
       updateMyHUD();
@@ -290,6 +294,7 @@ function handleBuyResult({ success, message, error, newCoins, itemId }) {
     }
   } else {
     showToast(`❌ ${error}`, 'error');
+    playErrorSound();
   }
 }
 
@@ -297,12 +302,16 @@ function handleBuyResult({ success, message, error, newCoins, itemId }) {
 
 function handleAttackResult({ success, attacker, target, damage, targetHp, killed, ghostUntil, fromX, fromY, toX, toY, error }) {
   if (!success) {
-    if (attacker === currentUser || error) showToast(`⚠️ ${error || 'Tấn công thất bại'}`, 'error');
+    if (attacker === currentUser || error) {
+      showToast(`⚠️ ${error || 'Tấn công thất bại'}`, 'error');
+      playErrorSound();
+    }
     return;
   }
 
   // Animate projectile bay từ attacker đến target
   animateProjectile(fromX, fromY, toX, toY);
+  playAttackSound();
 
   // Sau 400ms (khi đạn đến nơi), hiện damage number
   setTimeout(() => {
@@ -336,7 +345,10 @@ function handleCoinEarned({ success, newCoins, x, y, error }) {
     DOM.shopCoins.textContent = newCoins;
   }
   // Hiện animation +1$ tại vị trí click trong universe
-  if (x !== undefined && y !== undefined) spawnCoinPop(x, y);
+  if (x !== undefined && y !== undefined) {
+    spawnCoinPop(x, y);
+    playCoinSound();
+  }
 }
 
 // ---------------------------------------------------------------
@@ -597,6 +609,59 @@ function switchScreen(to) {
   DOM.spaceScreen.classList.remove('active');
   if (to === 'space') DOM.spaceScreen.classList.add('active');
   else                DOM.loginScreen.classList.add('active');
+}
+
+// ---------------------------------------------------------------
+// 🔊 SOUND EFFECTS (Web Audio API)
+// ---------------------------------------------------------------
+const AudioContext = window.AudioContext || window.webkitAudioContext;
+let audioCtx;
+
+function initAudio() {
+  if (!audioCtx) audioCtx = new AudioContext();
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+}
+
+function playTone(freq, type, duration, vol = 0.1) {
+  if (!audioCtx) return;
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = type;
+  osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+  
+  gain.gain.setValueAtTime(vol, audioCtx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + duration);
+  
+  osc.connect(gain);
+  gain.connect(audioCtx.destination);
+  osc.start();
+  osc.stop(audioCtx.currentTime + duration);
+}
+
+function playCoinSound() {
+  playTone(880, 'sine', 0.1, 0.05); // High beep
+  setTimeout(() => playTone(1108, 'sine', 0.15, 0.05), 50); // Higher beep
+}
+
+function playAttackSound() {
+  playTone(150, 'sawtooth', 0.2, 0.1);
+}
+
+function playBuySound() {
+  playTone(440, 'square', 0.1, 0.05);
+  setTimeout(() => playTone(554, 'square', 0.1, 0.05), 100);
+  setTimeout(() => playTone(659, 'square', 0.2, 0.05), 200);
+}
+
+function playErrorSound() {
+  playTone(200, 'sawtooth', 0.3, 0.1);
+  setTimeout(() => playTone(150, 'sawtooth', 0.3, 0.1), 100);
+}
+
+function playFlashEventSound() {
+  playTone(600, 'sine', 0.2, 0.08);
+  setTimeout(() => playTone(800, 'sine', 0.2, 0.08), 200);
+  setTimeout(() => playTone(1000, 'sine', 0.4, 0.08), 400);
 }
 
 // Hash đơn giản để gán màu nhất quán cho mỗi username
