@@ -1,158 +1,110 @@
 // =============================================================
-// src/chatRoom.js - Durable Object: ChatRoom (Game Edition)
+// src/chatRoom.js - Durable Object: ChatRoom (Full Game Edition)
 // =============================================================
-//
-// KIẾN TRÚC ANTI-CHEAT:
-//   Toàn bộ logic game (cộng coin, kiểm tra đáp án, ghost mode)
-//   đều tính toán tại ĐÂY (Backend). Frontend chỉ render kết quả.
-//   → Người dùng không thể dùng DevTools hack tiền/HP.
-//
-// STATE PERSISTENCE:
-//   Dùng Transactional Storage API (state.storage.put/get) để
-//   lưu {hp, coins, aura} của từng player xuống ổ đĩa Edge.
-//   → Dữ liệu tồn tại kể cả khi Durable Object bị evict khỏi RAM.
-//
-// FLASH EVENTS (DO Alarms):
-//   Thay vì setInterval (tốn CPU nền), dùng state.storage.setAlarm()
-//   để DO tự "đánh thức" chính nó sau mỗi 45–90 giây.
-//   → Hiệu quả hơn, đúng với mô hình Serverless.
-//
-// =============================================================
+
+// --- Danh mục vật phẩm Shop ---
+const SHOP_ITEMS = {
+  fire_aura:   { name: 'Hào quang Lửa',     price: 50,  type: 'aura',       auraId: 'fire' },
+  neon_spiral: { name: 'Vòng xoáy Neon',    price: 120, type: 'aura',       auraId: 'neon' },
+  ice_shield:  { name: 'Khiên Băng giá',    price: 250, type: 'aura',       auraId: 'ice'  },
+  milk_heal:   { name: 'Sữa Đặc Chữa Lành', price: 30,  type: 'consumable', healHp: 20    },
+};
+
+const ATTACK_COST    = 5;        // $ mỗi lần tấn công
+const ATTACK_DAMAGE  = 15;       // HP bị trừ mỗi đòn
+const GHOST_DURATION = 30_000;   // 30 giây ghost mode
 
 export class ChatRoom {
   constructor(state, env) {
     this.state = state;
-    this.env = env;
-
-    // Map<WebSocket, PlayerState> — lưu tất cả session đang kết nối
-    // PlayerState: { username, hp, coins, aura, x, y, ghostUntil, lastChatTime, lastMoveTime }
-    this.sessions = new Map();
-
-    // Flash event đang active (null nếu không có)
-    // { type, question, answer, reward, expiresAt, solved }
+    this.env   = env;
+    this.sessions         = new Map(); // Map<WebSocket, PlayerState>
     this.activeFlashEvent = null;
   }
 
   // =============================================================
-  // fetch() — Xử lý WebSocket Upgrade từ Worker
+  // fetch() — WebSocket Upgrade
   // =============================================================
   async fetch(request) {
-    const url = new URL(request.url);
+    const url      = new URL(request.url);
     const username = url.searchParams.get('username')?.trim();
-
     if (!username) return new Response('Thiếu username', { status: 400 });
 
     const [client, server] = Object.values(new WebSocketPair());
-
-    // Await để đảm bảo player data được load xong trước khi trả 101
     await this.handleSession(server, username);
-
     return new Response(null, { status: 101, webSocket: client });
   }
 
   // =============================================================
-  // alarm() — DO Alarms callback: tự động kích hoạt Flash Event
+  // alarm() — DO Alarms: Flash Event scheduler
   // =============================================================
-  // Cloudflare gọi hàm này khi đồng hồ báo thức (alarm) kích hoạt.
-  // Không tốn tài nguyên chờ đợi như setInterval — DO chỉ "thức dậy"
-  // đúng lúc cần thiết rồi lại ngủ.
   async alarm() {
-    // Chỉ bắn event khi có người đang online
-    if (this.sessions.size > 0) {
-      this.triggerFlashEvent();
-    }
-
-    // Lập lịch lần tiếp theo: 45–90 giây ngẫu nhiên
-    const nextDelay = 45_000 + Math.floor(Math.random() * 45_000);
-    await this.state.storage.setAlarm(Date.now() + nextDelay);
+    if (this.sessions.size > 0) this.triggerFlashEvent();
+    const next = 45_000 + Math.floor(Math.random() * 45_000);
+    await this.state.storage.setAlarm(Date.now() + next);
   }
 
   // =============================================================
-  // handleSession() — Quản lý vòng đời một WebSocket session
+  // handleSession() — Vòng đời một WebSocket session
   // =============================================================
   async handleSession(webSocket, username) {
     webSocket.accept();
 
-    // --- Load dữ liệu bền vững từ Storage API ---
+    // Load persistent data
     const saved = await this.state.storage.get(`player:${username}`) || {};
-
     const player = {
       username,
-      hp:       saved.hp    ?? 100,
-      coins:    saved.coins ?? 50,
-      aura:     saved.aura  ?? null,
-      // Vị trí ngẫu nhiên khi vào (% của màn hình, tránh rìa)
-      x: 8 + Math.random() * 72,
-      y: 15 + Math.random() * 65,
-      // Ghost mode: timestamp khi nào hết ghost (0 = không ghost)
-      ghostUntil: 0,
-      // Rate limiting timestamps
+      hp:          saved.hp    ?? 100,
+      coins:       saved.coins ?? 50,
+      aura:        saved.aura  ?? null,
+      x:           8 + Math.random() * 72,
+      y:           15 + Math.random() * 65,
+      ghostUntil:  0,
       lastChatTime: 0,
       lastMoveTime: 0,
+      lastAttackTime: 0,
     };
 
     this.sessions.set(webSocket, player);
-    console.log(`[+] "${username}" vào. Tổng: ${this.sessions.size}`);
 
-    // Gửi thông tin chào mừng riêng cho người mới (kèm state hiện tại)
     this.sendJSON(webSocket, {
-      type: 'welcome',
+      type:              'welcome',
       player,
-      activeFlashEvent: this.activeFlashEvent
-        ? {
-            type:      this.activeFlashEvent.type,
-            question:  this.activeFlashEvent.question,
-            expiresAt: this.activeFlashEvent.expiresAt,
-            reward:    this.activeFlashEvent.reward,
-          }
+      activeFlashEvent:  this.activeFlashEvent
+        ? { type: this.activeFlashEvent.type, question: this.activeFlashEvent.question,
+            expiresAt: this.activeFlashEvent.expiresAt, reward: this.activeFlashEvent.reward }
         : null,
     });
 
-    // Broadcast game state đầy đủ cho TẤT CẢ (bao gồm cả người mới)
     this.broadcastGameState();
-
-    // Đảm bảo alarm flash event đã được lập lịch
     await this.ensureAlarmScheduled();
 
-    // --- Lắng nghe message từ client ---
     webSocket.addEventListener('message', async (evt) => {
       try {
         const data = JSON.parse(evt.data);
         await this.handleMessage(webSocket, player, data);
-      } catch {
-        // Bỏ qua JSON không hợp lệ
-      }
+      } catch { /* ignore bad JSON */ }
     });
 
-    // --- Dọn dẹp khi ngắt kết nối ---
     const onDisconnect = async () => {
-      if (!this.sessions.has(webSocket)) return; // Tránh double-cleanup
+      if (!this.sessions.has(webSocket)) return;
       this.sessions.delete(webSocket);
-      console.log(`[-] "${username}" rời. Còn: ${this.sessions.size}`);
-
-      // Lưu state cuối cùng của player xuống storage
       await this.savePlayer(username, player);
-
-      // Thông báo cho mọi người
       this.broadcastGameState();
     };
-
     webSocket.addEventListener('close', onDisconnect);
     webSocket.addEventListener('error', onDisconnect);
   }
 
   // =============================================================
-  // handleMessage() — Dispatcher xử lý các loại message từ client
+  // handleMessage() — Dispatcher
   // =============================================================
   async handleMessage(webSocket, player, data) {
     const now = Date.now();
 
-    // Kiểm tra flash event hết hạn → tự động xóa
+    // Auto-expire flash events
     if (this.activeFlashEvent && now > this.activeFlashEvent.expiresAt) {
-      // Broadcast thông báo hết hạn nếu chưa được giải
-      if (!this.activeFlashEvent.solved) {
-        this.broadcast({ type: 'flash_expired' });
-      }
+      if (!this.activeFlashEvent.solved) this.broadcast({ type: 'flash_expired' });
       this.activeFlashEvent = null;
     }
 
@@ -160,92 +112,142 @@ export class ChatRoom {
 
       // -------------------------------------------------------
       case 'chat': {
-        // Rate limit: không cho phép spam (< 500ms giữa 2 tin nhắn)
         if (now - player.lastChatTime < 500) return;
         player.lastChatTime = now;
-
         const message = String(data.message ?? '').slice(0, 200).trim();
         if (!message) return;
 
-        // === Kiểm tra có phải đáp án Flash Event không ===
-        if (
-          this.activeFlashEvent &&
-          !this.activeFlashEvent.solved &&
-          now < this.activeFlashEvent.expiresAt &&
-          (this.activeFlashEvent.type === 'type_phrase' || this.activeFlashEvent.type === 'math_quiz')
-        ) {
-          const evt = this.activeFlashEvent;
-          if (message.toLowerCase().trim() === evt.answer.toLowerCase().trim()) {
-            // --- Đúng đáp án! ---
-            evt.solved = true;
-            player.coins += evt.reward;
+        // Kiểm tra đáp án Flash Event
+        if (this.activeFlashEvent && !this.activeFlashEvent.solved &&
+            now < this.activeFlashEvent.expiresAt &&
+            (this.activeFlashEvent.type === 'type_phrase' || this.activeFlashEvent.type === 'math_quiz')) {
+          if (message.toLowerCase().trim() === this.activeFlashEvent.answer.toLowerCase().trim()) {
+            this.activeFlashEvent.solved = true;
+            player.coins += this.activeFlashEvent.reward;
             await this.savePlayer(player.username, player);
-
-            this.broadcast({
-              type: 'flash_result',
-              winner:  player.username,
-              reward:  evt.reward,
-              correct: evt.answer,
-            });
+            this.broadcast({ type: 'flash_result', winner: player.username, reward: this.activeFlashEvent.reward, correct: this.activeFlashEvent.answer });
             this.activeFlashEvent = null;
-            this.broadcastGameState(); // Cập nhật coins mới
-            return; // Không broadcast như tin nhắn thường
+            this.broadcastGameState();
+            return;
           }
         }
 
-        // Tin nhắn chat thông thường
-        this.broadcast({
-          type:      'chat',
-          username:  player.username,
-          message,
-          timestamp: new Date().toISOString(),
-        });
+        this.broadcast({ type: 'chat', username: player.username, message, timestamp: new Date().toISOString() });
         break;
       }
 
       // -------------------------------------------------------
-      // Click-to-move: client gửi tọa độ đích (% của màn hình)
-      // Rate limit: 300ms để tránh spam position updates
       case 'move': {
         if (now - player.lastMoveTime < 300) return;
         player.lastMoveTime = now;
-
-        // Clamp tọa độ trong vùng an toàn (tránh ra ngoài rìa)
         const x = Math.max(3, Math.min(87, Number(data.x)));
         const y = Math.max(12, Math.min(85, Number(data.y)));
         if (isNaN(x) || isNaN(y)) return;
-
-        player.x = x;
-        player.y = y;
-
-        // Gửi lightweight position update (không cần full game_state)
-        this.broadcast({
-          type:     'player_moved',
-          username: player.username,
-          x, y,
-        });
+        player.x = x; player.y = y;
+        this.broadcast({ type: 'player_moved', username: player.username, x, y });
         break;
       }
 
       // -------------------------------------------------------
-      // Lucky Grab: Ai nhấn trước thì thắng
       case 'lucky_grab': {
-        if (!this.activeFlashEvent)                                     return;
-        if (this.activeFlashEvent.type !== 'lucky_grab')                return;
-        if (this.activeFlashEvent.solved)                               return;
-        if (now > this.activeFlashEvent.expiresAt)                      return;
-
+        if (!this.activeFlashEvent || this.activeFlashEvent.type !== 'lucky_grab') return;
+        if (this.activeFlashEvent.solved || now > this.activeFlashEvent.expiresAt) return;
         this.activeFlashEvent.solved = true;
         player.coins += this.activeFlashEvent.reward;
         await this.savePlayer(player.username, player);
-
-        this.broadcast({
-          type:    'flash_result',
-          winner:  player.username,
-          reward:  this.activeFlashEvent.reward,
-          correct: 'lucky_grab',
-        });
+        this.broadcast({ type: 'flash_result', winner: player.username, reward: this.activeFlashEvent.reward, correct: 'lucky_grab' });
         this.activeFlashEvent = null;
+        this.broadcastGameState();
+        break;
+      }
+
+      // -------------------------------------------------------
+      // MUA VẬT PHẨM SHOP
+      // Anti-cheat: Validate tiền và tính toán HOÀN TOÀN ở Server
+      case 'buy': {
+        const item = SHOP_ITEMS[data.itemId];
+        if (!item) return this.sendJSON(webSocket, { type: 'buy_result', success: false, error: 'Vật phẩm không tồn tại' });
+        if (player.coins < item.price) return this.sendJSON(webSocket, { type: 'buy_result', success: false, error: `Không đủ tiền! Cần ${item.price}$, bạn có ${player.coins}$` });
+
+        // Trừ tiền
+        player.coins -= item.price;
+
+        if (item.type === 'aura') {
+          player.aura = item.auraId;
+          await this.savePlayer(player.username, player);
+          this.sendJSON(webSocket, { type: 'buy_result', success: true, itemId: data.itemId, newCoins: player.coins, message: `Đã trang bị "${item.name}"!` });
+          // Broadcast để mọi người thấy aura mới
+          this.broadcastGameState();
+
+        } else if (item.type === 'consumable') {
+          // Sữa Đặc: Hồi HP tức thì
+          player.hp = Math.min(100, player.hp + item.healHp);
+          // Nếu đang ghost và HP > 0 → thoát ghost
+          if (player.ghostUntil > 0 && player.hp > 0) player.ghostUntil = 0;
+          await this.savePlayer(player.username, player);
+          this.sendJSON(webSocket, { type: 'buy_result', success: true, itemId: data.itemId, newCoins: player.coins, message: `+${item.healHp} HP! HP hiện tại: ${player.hp}` });
+          this.broadcastGameState();
+        }
+        break;
+      }
+
+      // -------------------------------------------------------
+      // TẤN CÔNG NGƯỜI CHƠI KHÁC
+      // Pay-to-attack: Tốn ATTACK_COST$, gây ATTACK_DAMAGE HP
+      case 'attack': {
+        // Rate limit tấn công: 1 giây
+        if (now - player.lastAttackTime < 1000) return;
+
+        // Ghost không thể tấn công
+        if (now < player.ghostUntil) return this.sendJSON(webSocket, { type: 'attack_result', success: false, error: 'Ghost không thể tấn công!' });
+
+        // Kiểm tra đủ tiền
+        if (player.coins < ATTACK_COST) return this.sendJSON(webSocket, { type: 'attack_result', success: false, error: `Không đủ tiền tấn công! Cần ${ATTACK_COST}$` });
+
+        // Tìm mục tiêu
+        const targetEntry = [...this.sessions.entries()].find(([, p]) => p.username === data.target);
+        if (!targetEntry) return this.sendJSON(webSocket, { type: 'attack_result', success: false, error: 'Mục tiêu không tồn tại' });
+
+        const [targetWs, target] = targetEntry;
+
+        // Ghost không thể bị tấn công
+        if (now < target.ghostUntil) return this.sendJSON(webSocket, { type: 'attack_result', success: false, error: 'Mục tiêu đang Ghost, không thể tấn công!' });
+
+        // Không tự tấn công
+        if (target.username === player.username) return;
+
+        player.lastAttackTime = now;
+
+        // === Thực hiện tấn công ===
+        player.coins -= ATTACK_COST;
+        target.hp    -= ATTACK_DAMAGE;
+        const killed  = target.hp <= 0;
+
+        if (killed) {
+          target.hp        = 0;
+          target.ghostUntil = now + GHOST_DURATION; // Ghost 30 giây
+        }
+
+        // Lưu state của cả 2
+        await this.savePlayer(player.username, player);
+        await this.savePlayer(target.username, target);
+
+        // Broadcast kết quả tấn công (kèm vị trí để animate đạn)
+        this.broadcast({
+          type:     'attack_result',
+          success:  true,
+          attacker: player.username,
+          target:   target.username,
+          damage:   ATTACK_DAMAGE,
+          targetHp: target.hp,
+          killed,
+          ghostUntil: target.ghostUntil,
+          // Vị trí để frontend animate projectile
+          fromX: player.x, fromY: player.y,
+          toX:   target.x, toY:   target.y,
+        });
+
+        // Broadcast game state mới (HP thay đổi)
         this.broadcastGameState();
         break;
       }
@@ -253,135 +255,98 @@ export class ChatRoom {
   }
 
   // =============================================================
-  // triggerFlashEvent() — Tạo ngẫu nhiên một Flash Event mới
+  // checkGhostRevivals() — Hồi sinh player hết thời gian ghost
+  // Dùng ghostUntil timestamp thay vì setTimeout (DO best practice)
+  // =============================================================
+  checkGhostRevivals() {
+    const now = Date.now();
+    for (const [ws, player] of this.sessions) {
+      if (player.ghostUntil > 0 && now >= player.ghostUntil) {
+        player.ghostUntil = 0;
+        player.hp         = 100; // Hồi đầy máu
+        // Thông báo riêng cho player được hồi sinh
+        this.sendJSON(ws, { type: 'revived', hp: 100 });
+        // Lưu HP mới
+        this.savePlayer(player.username, player);
+      }
+    }
+  }
+
+  // =============================================================
+  // triggerFlashEvent()
   // =============================================================
   triggerFlashEvent() {
     const types = ['type_phrase', 'math_quiz', 'lucky_grab'];
     const type  = types[Math.floor(Math.random() * types.length)];
-
     let question, answer, reward;
 
     if (type === 'type_phrase') {
-      const phrases = [
-        'Cloud đỉnh chóp',
-        'Durable Object',
-        'Edge Computing',
-        'Không gian chung',
-        'WebSocket Rules',
-      ];
-      const chosen = phrases[Math.floor(Math.random() * phrases.length)];
-      question = `⚡ Sự kiện! Gõ ngay: "${chosen}" (8 giây!)`;
+      const phrases = ['Cloud đỉnh chóp', 'Durable Object', 'Edge Computing', 'Không gian chung', 'WebSocket Rules'];
+      const chosen  = phrases[Math.floor(Math.random() * phrases.length)];
+      question = `⚡ Gõ ngay: "${chosen}" (8 giây!)`;
       answer   = chosen;
       reward   = 10;
-
     } else if (type === 'math_quiz') {
-      const a  = Math.floor(Math.random() * 50) + 10;
-      const b  = Math.floor(Math.random() * 40) + 5;
+      const a = Math.floor(Math.random() * 50) + 10;
+      const b = Math.floor(Math.random() * 40) + 5;
       const useAdd = Math.random() > 0.5;
-      question = useAdd
-        ? `🧮 Giải nhanh: ${a} + ${b} = ? (8 giây!)`
-        : `🧮 Giải nhanh: ${a + b} - ${b} = ? (8 giây!)`;
+      question = useAdd ? `🧮 ${a} + ${b} = ? (8 giây!)` : `🧮 ${a + b} - ${b} = ? (8 giây!)`;
       answer   = String(useAdd ? a + b : a);
       reward   = 15;
-
     } else {
-      question = '🎁 Lì xì! Ai nhanh tay? Ấn nút NHẬN ngay!';
+      question = '🎁 Lì xì! Ai nhanh tay? Ấn NHẬN ngay!';
       answer   = null;
       reward   = 50;
     }
 
-    this.activeFlashEvent = {
-      type,
-      question,
-      answer,
-      reward,
-      expiresAt: Date.now() + 8_000,
-      solved:    false,
-    };
-
-    // Broadcast event cho tất cả (không gửi `answer` để tránh cheat)
-    this.broadcast({
-      type:  'flash_event',
-      event: {
-        type,
-        question,
-        reward,
-        expiresAt: this.activeFlashEvent.expiresAt,
-      },
-    });
+    this.activeFlashEvent = { type, question, answer, reward, expiresAt: Date.now() + 8_000, solved: false };
+    this.broadcast({ type: 'flash_event', event: { type, question, reward, expiresAt: this.activeFlashEvent.expiresAt } });
   }
 
   // =============================================================
-  // broadcastGameState() — Gửi toàn bộ game state cho mọi client
+  // broadcastGameState()
   // =============================================================
   broadcastGameState() {
+    // Kiểm tra hồi sinh trước khi broadcast
+    this.checkGhostRevivals();
+
     const now     = Date.now();
     const players = [...this.sessions.values()].map((p) => ({
-      username:  p.username,
-      hp:        p.hp,
-      coins:     p.coins,
-      aura:      p.aura,
-      x:         p.x,
-      y:         p.y,
-      isGhost:   now < p.ghostUntil,
+      username:   p.username,
+      hp:         p.hp,
+      coins:      p.coins,
+      aura:       p.aura,
+      x:          p.x,
+      y:          p.y,
+      isGhost:    now < p.ghostUntil,
       ghostUntil: p.ghostUntil,
     }));
 
-    this.broadcast({
-      type: 'game_state',
-      players,
-      count: players.length,
-    });
+    this.broadcast({ type: 'game_state', players, count: players.length });
   }
 
-  // =============================================================
-  // ensureAlarmScheduled() — Đảm bảo có alarm cho Flash Event
-  // =============================================================
   async ensureAlarmScheduled() {
     const existing = await this.state.storage.getAlarm();
     if (!existing) {
-      // Flash event đầu tiên sau 30–60 giây
       const delay = 30_000 + Math.floor(Math.random() * 30_000);
       await this.state.storage.setAlarm(Date.now() + delay);
-      console.log(`[Alarm] Flash event đầu tiên sau ${Math.round(delay / 1000)}s`);
     }
   }
 
-  // =============================================================
-  // savePlayer() — Lưu state bền vững vào Transactional Storage
-  // =============================================================
-  // Chỉ lưu các trường cần persist (không lưu position hay timestamps)
   async savePlayer(username, player) {
-    await this.state.storage.put(`player:${username}`, {
-      hp:    player.hp,
-      coins: player.coins,
-      aura:  player.aura,
-    });
+    await this.state.storage.put(`player:${username}`, { hp: player.hp, coins: player.coins, aura: player.aura });
   }
 
-  // =============================================================
-  // broadcast() — Gửi JSON đến TẤT CẢ client đang kết nối
-  // =============================================================
   broadcast(data) {
-    const message    = JSON.stringify(data);
-    const deadSockets = [];
-
+    const message = JSON.stringify(data);
+    const dead    = [];
     for (const [ws] of this.sessions) {
-      try {
-        ws.send(message);
-      } catch {
-        deadSockets.push(ws);
-      }
+      try { ws.send(message); } catch { dead.push(ws); }
     }
-
-    // Dọn dẹp zombie connections
-    deadSockets.forEach((ws) => this.sessions.delete(ws));
+    dead.forEach((ws) => this.sessions.delete(ws));
   }
 
-  // =============================================================
-  // sendJSON() — Gửi JSON đến một WebSocket cụ thể
-  // =============================================================
-  sendJSON(webSocket, data) {
-    try { webSocket.send(JSON.stringify(data)); } catch { /* bỏ qua */ }
+  sendJSON(ws, data) {
+    try { ws.send(JSON.stringify(data)); } catch { /* ignore */ }
   }
 }

@@ -76,6 +76,19 @@ const DOM = {
 
   // Toast
   toastContainer: $('toast-container'),
+
+  // Phase 2: Shop
+  shopBtn:        $('shop-btn'),
+  shopModal:      $('shop-modal'),
+  shopOverlay:    $('shop-overlay'),
+  shopClose:      $('shop-close'),
+  shopCoins:      $('shop-coins'),
+
+  // Phase 2: Attack popup
+  attackPopup:    $('attack-popup'),
+  attackTargetName: $('attack-target-name'),
+  attackConfirm:  $('attack-confirm'),
+  attackCancel:   $('attack-cancel'),
 };
 
 // ---------------------------------------------------------------
@@ -110,6 +123,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Click-to-move: click vào vùng universe để di chuyển avatar
   DOM.universe.addEventListener('click', handleUniverseClick);
+
+  // Phase 2: Shop
+  DOM.shopBtn.addEventListener('click', openShop);
+  DOM.shopClose.addEventListener('click', closeShop);
+  DOM.shopOverlay.addEventListener('click', closeShop);
+  document.querySelectorAll('.buy-btn').forEach((btn) => {
+    btn.addEventListener('click', () => buyItem(btn.dataset.itemId));
+  });
+
+  // Phase 2: Attack popup
+  DOM.attackConfirm.addEventListener('click', confirmAttack);
+  DOM.attackCancel.addEventListener('click',  closeAttackPopup);
 });
 
 // ---------------------------------------------------------------
@@ -152,13 +177,17 @@ function onWsMessage(event) {
   try { data = JSON.parse(event.data); } catch { return; }
 
   switch (data.type) {
-    case 'welcome':      handleWelcome(data);      break;
-    case 'game_state':   handleGameState(data);    break;
-    case 'player_moved': handlePlayerMoved(data);  break;
-    case 'chat':         handleChat(data);         break;
-    case 'flash_event':  handleFlashEvent(data);   break;
-    case 'flash_result': handleFlashResult(data);  break;
-    case 'flash_expired':handleFlashExpired();     break;
+    case 'welcome':       handleWelcome(data);       break;
+    case 'game_state':    handleGameState(data);     break;
+    case 'player_moved':  handlePlayerMoved(data);   break;
+    case 'chat':          handleChat(data);          break;
+    case 'flash_event':   handleFlashEvent(data);    break;
+    case 'flash_result':  handleFlashResult(data);   break;
+    case 'flash_expired': handleFlashExpired();      break;
+    // Phase 2
+    case 'buy_result':    handleBuyResult(data);     break;
+    case 'attack_result': handleAttackResult(data);  break;
+    case 'revived':       handleRevived(data);       break;
   }
 }
 
@@ -186,6 +215,8 @@ function handleGameState({ players, count }) {
   allPlayers = players;
   DOM.onlineCount.textContent = count;
   renderPlayers(players);
+  // Cập nhật số dư trong shop nếu đang mở
+  if (myState) DOM.shopCoins.textContent = myState.coins;
 }
 
 // Lightweight position update — chỉ update vị trí 1 player
@@ -245,6 +276,57 @@ function handleFlashExpired() {
   appendSystemMessage('⏰ Flash Event đã hết giờ. Chờ event tiếp theo!');
 }
 
+// ── PHASE 2: SHOP ──────────────────────────────────────────────
+
+function handleBuyResult({ success, message, error, newCoins, itemId }) {
+  if (success) {
+    showToast(`✅ ${message}`, 'success');
+    appendSystemMessage(`🛒 Bạn đã mua: ${message}`);
+    if (myState && newCoins !== undefined) {
+      myState.coins = newCoins;
+      updateMyHUD();
+      DOM.shopCoins.textContent = newCoins;
+    }
+  } else {
+    showToast(`❌ ${error}`, 'error');
+  }
+}
+
+// ── PHASE 2: ATTACK ────────────────────────────────────────────
+
+function handleAttackResult({ success, attacker, target, damage, targetHp, killed, ghostUntil, fromX, fromY, toX, toY, error }) {
+  if (!success) {
+    if (attacker === currentUser || error) showToast(`⚠️ ${error || 'Tấn công thất bại'}`, 'error');
+    return;
+  }
+
+  // Animate projectile bay từ attacker đến target
+  animateProjectile(fromX, fromY, toX, toY);
+
+  // Sau 400ms (khi đạn đến nơi), hiện damage number
+  setTimeout(() => {
+    spawnDamageNumber(toX, toY, damage);
+  }, 400);
+
+  const isIKilledSomeone = attacker === currentUser;
+  const wasIKilled       = target   === currentUser;
+
+  const msg = killed
+    ? `💀 "${attacker}" đã hạ gục "${target}"! (Ghost 30s)`
+    : `⚔️ "${attacker}" tấn công "${target}" -${damage}HP (còn ${targetHp}HP)`;
+
+  appendSystemMessage(msg);
+
+  if (isIKilledSomeone) showToast(`⚔️ Bạn đã tấn công ${target}! -5$`, 'info');
+  if (wasIKilled && killed) showToast('💀 Bạn đã bị hạ gục! Ghost 30 giây...', 'error');
+}
+
+function handleRevived({ hp }) {
+  if (myState) { myState.hp = hp; updateMyHUD(); }
+  showToast('🔄 Bạn đã hồi sinh! HP đầy 100!', 'success');
+  appendSystemMessage('🔄 Bạn đã hồi sinh!');
+}
+
 // ---------------------------------------------------------------
 // 🎨 RENDERING
 // ---------------------------------------------------------------
@@ -284,8 +366,19 @@ function renderPlayers(players) {
         <div class="avatar-label">
           <span class="avatar-name ${isMe ? 'is-me' : ''}">${player.username}${isMe ? ' (Bạn)' : ''}</span>
           <span class="avatar-coins">💰 ${player.coins}$</span>
+          ${!isMe ? `<button class="attack-btn" data-target="${player.username}">⚔ ATTACK</button>` : ''}
         </div>
       `;
+
+      // Gắn sự kiện attack button ngay sau khi tạo
+      const attackBtn = el.querySelector('.attack-btn');
+      if (attackBtn) {
+        attackBtn.addEventListener('click', (e) => {
+          e.stopPropagation(); // Không trigger click-to-move
+          openAttackPopup(attackBtn.dataset.target);
+        });
+      }
+
       DOM.universe.appendChild(el);
     } else {
       // Cập nhật các trường thay đổi
@@ -514,3 +607,89 @@ function escapeHtml(str) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
 }
+
+// ---------------------------------------------------------------
+// 🛒 SHOP FUNCTIONS (Phase 2)
+// ---------------------------------------------------------------
+
+function openShop() {
+  if (myState) DOM.shopCoins.textContent = myState.coins;
+  DOM.shopModal.classList.remove('hidden');
+}
+
+function closeShop() {
+  DOM.shopModal.classList.add('hidden');
+}
+
+function buyItem(itemId) {
+  if (!itemId || ws?.readyState !== WebSocket.OPEN) return;
+  ws.send(JSON.stringify({ type: 'buy', itemId }));
+  closeShop();
+}
+
+// ---------------------------------------------------------------
+// ⚔️ ATTACK FUNCTIONS (Phase 2)
+// ---------------------------------------------------------------
+
+function openAttackPopup(targetUsername) {
+  pendingAttackTarget = targetUsername;
+  DOM.attackTargetName.textContent = targetUsername;
+  DOM.attackPopup.classList.remove('hidden');
+}
+
+function closeAttackPopup() {
+  pendingAttackTarget = null;
+  DOM.attackPopup.classList.add('hidden');
+}
+
+function confirmAttack() {
+  if (!pendingAttackTarget || ws?.readyState !== WebSocket.OPEN) return;
+  ws.send(JSON.stringify({ type: 'attack', target: pendingAttackTarget }));
+  closeAttackPopup();
+}
+
+// ---------------------------------------------------------------
+// 💥 PROJECTILE ANIMATION (Phase 2)
+// ---------------------------------------------------------------
+
+// Animate một viên đạn bay từ (fromX%, fromY%) đến (toX%, toY%) trong universe
+function animateProjectile(fromX, fromY, toX, toY) {
+  const rect     = DOM.universe.getBoundingClientRect();
+  const startPx  = { x: (fromX / 100) * rect.width,  y: (fromY / 100) * rect.height };
+  const endPx    = { x: (toX   / 100) * rect.width,  y: (toY   / 100) * rect.height };
+  const dx       = endPx.x - startPx.x;
+  const dy       = endPx.y - startPx.y;
+  const dist     = Math.sqrt(dx * dx + dy * dy);
+  const duration = Math.max(200, Math.min(600, dist * 0.8)); // Tầm bắn như thế nào cũng bay trong 200-600ms
+
+  const proj = document.createElement('div');
+  proj.className  = 'projectile';
+  proj.style.left = `${startPx.x}px`;
+  proj.style.top  = `${startPx.y}px`;
+
+  // Dùng CSS custom property để animate position
+  proj.style.transition = `left ${duration}ms linear, top ${duration}ms linear`;
+  DOM.universe.appendChild(proj);
+
+  // Force reflow để transition chạy
+  proj.getBoundingClientRect();
+
+  proj.style.left = `${endPx.x}px`;
+  proj.style.top  = `${endPx.y}px`;
+
+  setTimeout(() => proj.remove(), duration + 100);
+}
+
+// Hiện số sát thương nổi lên trên avatar mục tiêu
+function spawnDamageNumber(toX, toY, damage) {
+  const rect   = DOM.universe.getBoundingClientRect();
+  const pop    = document.createElement('div');
+  pop.className = 'damage-popup';
+  pop.textContent = `-${damage} HP`;
+  pop.style.left  = `${(toX / 100) * rect.width}px`;
+  pop.style.top   = `${(toY / 100) * rect.height}px`;
+  DOM.universe.appendChild(pop);
+  pop.addEventListener('animationend', () => pop.remove());
+}
+
+let pendingAttackTarget = null;

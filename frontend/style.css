@@ -758,3 +758,230 @@ html, body {
   .main-layout { flex-direction: column; }
   .chat-panel { width: 100%; height: 200px; border-left: none; border-top: 1px solid var(--border); }
 }
+
+/* ======================== PHASE 2: SHOP ======================== */
+
+.shop-hdr-btn {
+  width: auto;
+  border-color: var(--gold);
+  color: var(--gold);
+  padding: 6px 14px;
+  font-size: 0.8rem;
+}
+.shop-hdr-btn:hover {
+  background: var(--gold);
+  color: var(--bg);
+  box-shadow: 0 0 20px rgba(255,215,0,0.4);
+}
+
+.shop-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.shop-modal.hidden { display: none; }
+
+.shop-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0,0,0,0.75);
+  backdrop-filter: blur(4px);
+  cursor: pointer;
+}
+
+.shop-panel {
+  position: relative;
+  z-index: 1;
+  background: rgba(8, 8, 20, 0.98);
+  border: 1px solid var(--gold);
+  box-shadow: 0 0 40px rgba(255,215,0,0.15);
+  padding: 28px;
+  width: min(480px, 92vw);
+  max-height: 80vh;
+  overflow-y: auto;
+}
+
+.shop-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.shop-title {
+  font-family: var(--font-ui);
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: var(--gold);
+  letter-spacing: 0.12em;
+}
+.shop-close-btn {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-size: 1.2rem;
+  cursor: pointer;
+  padding: 4px 8px;
+  transition: color var(--transition);
+}
+.shop-close-btn:hover { color: var(--red); }
+
+.shop-balance {
+  font-size: 0.82rem;
+  color: var(--text-dim);
+  margin-bottom: 20px;
+  letter-spacing: 0.05em;
+}
+.shop-balance span { color: var(--gold); font-weight: 700; font-size: 1rem; }
+
+.shop-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.shop-item {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 14px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  transition: border-color var(--transition);
+}
+.shop-item:hover { border-color: rgba(255,215,0,0.4); }
+.shop-item.consumable { border-color: rgba(0,255,136,0.2); }
+.shop-item.consumable:hover { border-color: rgba(0,255,136,0.5); }
+
+.item-preview {
+  font-size: 2rem;
+  width: 52px;
+  height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.04);
+  flex-shrink: 0;
+}
+.aura-fire-preview { background: rgba(255,69,0,0.15); box-shadow: 0 0 12px rgba(255,69,0,0.3); }
+.aura-neon-preview { background: rgba(255,0,255,0.1);  box-shadow: 0 0 12px rgba(255,0,255,0.3); }
+.aura-ice-preview  { background: rgba(136,204,255,0.1); box-shadow: 0 0 12px rgba(136,204,255,0.3); }
+
+.item-info { flex: 1; }
+.item-name {
+  font-family: var(--font-ui);
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+.item-desc {
+  font-size: 0.72rem;
+  color: var(--text-dim);
+  letter-spacing: 0.04em;
+}
+
+.buy-btn {
+  border-color: var(--gold) !important;
+  color: var(--gold) !important;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.buy-btn:hover {
+  background: var(--gold) !important;
+  color: var(--bg) !important;
+  box-shadow: 0 0 16px rgba(255,215,0,0.4) !important;
+}
+
+/* ======================== PHASE 2: ATTACK ======================== */
+
+/* Button xuất hiện khi hover vào avatar của người khác */
+.player-avatar .attack-btn {
+  opacity: 0;
+  pointer-events: none;
+  font-size: 0.65rem;
+  font-family: var(--font-ui);
+  font-weight: 600;
+  padding: 3px 10px;
+  border: 1px solid var(--red);
+  background: rgba(255,51,85,0.1);
+  color: var(--red);
+  cursor: pointer;
+  letter-spacing: 0.08em;
+  border-radius: var(--radius);
+  margin-top: 2px;
+  transition: all 0.15s ease;
+}
+.player-avatar:hover .attack-btn {
+  opacity: 1;
+  pointer-events: auto;
+}
+.player-avatar .attack-btn:hover {
+  background: var(--red);
+  color: #fff;
+  box-shadow: 0 0 12px rgba(255,51,85,0.5);
+}
+
+/* Popup xác nhận tấn công */
+.attack-popup {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 300;
+  background: rgba(8,8,20,0.98);
+  border: 1px solid var(--red);
+  box-shadow: 0 0 30px rgba(255,51,85,0.2);
+  padding: 24px 28px;
+  text-align: center;
+  min-width: 260px;
+}
+.attack-popup.hidden { display: none; }
+.attack-popup p { font-size: 0.95rem; color: var(--text); margin-bottom: 6px; }
+.attack-popup strong { color: var(--red); }
+.attack-cost-note {
+  font-size: 0.72rem !important;
+  color: var(--text-dim) !important;
+  margin-bottom: 16px !important;
+}
+.attack-popup-btns {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+}
+
+/* Projectile animation */
+.projectile {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--red);
+  box-shadow: 0 0 8px var(--red), 0 0 16px rgba(255,51,85,0.5);
+  pointer-events: none;
+  z-index: 50;
+  transform: translate(-50%, -50%);
+}
+
+/* Damage number popup */
+.damage-popup {
+  position: absolute;
+  font-family: var(--font-ui);
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: var(--red);
+  text-shadow: 0 0 8px rgba(255,51,85,0.8);
+  pointer-events: none;
+  z-index: 60;
+  transform: translate(-50%, -50%);
+  animation: damage-float 1.2s ease-out forwards;
+}
+@keyframes damage-float {
+  0%   { opacity: 1; transform: translate(-50%, -50%); }
+  100% { opacity: 0; transform: translate(-50%, -200%); }
+}
+

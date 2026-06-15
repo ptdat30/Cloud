@@ -60,6 +60,8 @@
         </div>
       </div>
 
+      <button id="shop-btn" class="cyber-btn sm shop-hdr-btn">🛒 SHOP</button>
+
       <div class="online-badge">
         <span class="dot online" id="online-dot"></span>
         <span id="online-count">0</span>&nbsp;ONLINE
@@ -110,6 +112,67 @@
 
     <!-- Toast Notifications -->
     <div id="toast-container" class="toast-container" aria-live="assertive"></div>
+  </div>
+
+  <!-- ====== SHOP MODAL ====== -->
+  <div id="shop-modal" class="shop-modal hidden" role="dialog" aria-modal="true" aria-label="Cửa hàng">
+    <div class="shop-overlay" id="shop-overlay"></div>
+    <div class="shop-panel">
+      <div class="shop-header">
+        <h2 class="shop-title">🛒 CỬA HÀNG</h2>
+        <button id="shop-close" class="shop-close-btn">✕</button>
+      </div>
+      <p class="shop-balance">Số dư: <span id="shop-coins">0</span>$</p>
+      <div class="shop-grid">
+
+        <div class="shop-item" data-item-id="fire_aura">
+          <div class="item-preview aura-fire-preview">🔥</div>
+          <div class="item-info">
+            <div class="item-name">Hào quang Lửa</div>
+            <div class="item-desc">Viền lửa đỏ cam bốc cháy nhấp nháy</div>
+          </div>
+          <button class="cyber-btn sm buy-btn" data-item-id="fire_aura" data-price="50">50$</button>
+        </div>
+
+        <div class="shop-item" data-item-id="neon_spiral">
+          <div class="item-preview aura-neon-preview">💜</div>
+          <div class="item-info">
+            <div class="item-name">Vòng xoáy Neon</div>
+            <div class="item-desc">Glow chớp tắt đổi màu Cyan ↔ Magenta</div>
+          </div>
+          <button class="cyber-btn sm buy-btn" data-item-id="neon_spiral" data-price="120">120$</button>
+        </div>
+
+        <div class="shop-item" data-item-id="ice_shield">
+          <div class="item-preview aura-ice-preview">❄️</div>
+          <div class="item-info">
+            <div class="item-name">Khiên Băng giá</div>
+            <div class="item-desc">Vầng sáng băng xanh mờ ảo bao quanh</div>
+          </div>
+          <button class="cyber-btn sm buy-btn" data-item-id="ice_shield" data-price="250">250$</button>
+        </div>
+
+        <div class="shop-item consumable" data-item-id="milk_heal">
+          <div class="item-preview">🥛</div>
+          <div class="item-info">
+            <div class="item-name">Sữa Đặc Chữa Lành</div>
+            <div class="item-desc">Hồi ngay +20 HP · Có thể dùng lúc Ghost</div>
+          </div>
+          <button class="cyber-btn sm buy-btn" data-item-id="milk_heal" data-price="30">30$</button>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ====== ATTACK CONFIRM POPUP ====== -->
+  <div id="attack-popup" class="attack-popup hidden">
+    <p id="attack-popup-text">Tấn công <strong id="attack-target-name"></strong>?</p>
+    <p class="attack-cost-note">Chi phí: 5$ · Sát thương: 15 HP</p>
+    <div class="attack-popup-btns">
+      <button id="attack-confirm" class="cyber-btn sm" style="border-color:#ff3355;color:#ff3355">⚔ TẤN CÔNG</button>
+      <button id="attack-cancel" class="cyber-btn sm">HỦY</button>
+    </div>
   </div>
 
   <script src="app.js"></script>
